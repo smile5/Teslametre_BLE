@@ -1,0 +1,690 @@
+#include "device_5.h"
+#include "deviceinfo_5.h"
+#include "global.h"
+
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+#include <QDebug>
+#include <QtEndian>
+#include <QProcess>
+#include <QMessageBox>
+#include <QSysInfo>
+#include <QTimer>
+#include <QThread>
+#include "clickablelabel.h"
+#define OS_LINUX
+
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    status_led(new QLabel),
+    etat_label(new QLabel),
+    dev_label(new ClickableLabel),
+    status_text(new QLabel),
+    ui(new Ui::MainWindow)
+{
+    setWindowIcon(QIcon(":/alim.png"));
+    ui->setupUi(this);
+    timer = new QTimer(this); // timer pour timeout scan
+    timer_read = new QTimer(this);
+    timer->connect(timer_read, SIGNAL(timeout()),this, SLOT(readble_timer()));
+    //while(ble_device.scan_complet==false);
+    //    ui->radioButton->setEnabled(false);
+    //    ui->radioButton_2->setEnabled(false);
+    //    ui->radioButton_3->setEnabled(false);
+    ui->PB_Connect->setEnabled(false);
+    //barre status
+    status_led->setFixedWidth(ui->statusBar->height()-4);
+    status_led->setMargin(3);
+    status_led->setAlignment(Qt::AlignRight);
+    status_text->setAlignment(Qt::AlignRight);
+    //  alim_connected=false;
+    set_led(RED);
+    //     etat_label->setAlignment(Qt::AlignRight);
+    //  etat_label->setIndent(0);
+
+    ui->statusBar->addWidget(dev_label);
+    ui->statusBar->addWidget(status_text,1);
+    ui->statusBar->addWidget(status_led, 2);
+    //   ui->statusBar->addWidget(etat_label,2);
+    ui->App1->setEnabled(false);
+    ui->App2->setEnabled(false);
+    ui->App3->setEnabled(false);
+    // etat_label->setText("Système Arrêté");
+    dev_label->setText("XG - Enise ECL - CT");
+    dev_label->setFixedWidth(120);
+    //   status_led->setText("Port série: "+serial->portName());
+    connect(dev_label,SIGNAL(clicked()),this,SLOT(on_dev_label_clicked()));
+    connect(&ble_device, SIGNAL(device_error()),this, SLOT(error_ble()));
+    connect(&ble_device, SIGNAL(power_error()),this, SLOT(error_power_ble()));
+    connect(&ble_device,SIGNAL(new_val()),this,SLOT(recup_val()));
+    connect(&ble_device,SIGNAL(signal_disconnected()),this,SLOT(disconnectedd()));
+/*  QPixmap cy;
+    cy.load(":/Logo_ecl.png");
+    ui->Enise->setPixmap(cy.scaled(ui->Enise->width(),ui->Enise->height(),Qt::KeepAspectRatioByExpanding));*/
+}
+
+MainWindow::~MainWindow()
+{
+    // usb_send_command("C",0);
+#ifdef Q_OS_LINUX
+    QProcess::execute("bluetoothctl remove "  + QString(Alim1_MAC));
+    QProcess::execute("bluetoothctl remove "  + QString(Alim2_MAC));
+    QProcess::execute("bluetoothctl remove "  + QString(Alim3_MAC));
+#endif
+    ble_device.disconnectService();
+    delete ui;
+}
+
+void MainWindow::disconnectedd()
+{
+    ui->PB_Connect->setText("Connect Bluetooth");
+    ui->PB_Connect->setEnabled(false);
+    ui->PB_Scan->setEnabled(true);
+}
+
+void MainWindow::set_led(unsigned char i)
+{
+    QPixmap led;
+    if (i==2)
+    {
+        led.load(":/blue_led.png","png");
+    }
+    else if (i==1)
+    {
+        led.load(":/green_led.png","png");
+        ui->PB_Scan->setEnabled(false);
+        ui->PB_Connect->setText("Disconnect Bluetooth");
+    }
+    else
+    {
+        led.load(":/red_led.png","png");
+    }
+    led=led.scaled(20,20);
+    status_led->setPixmap(led);
+    status_led->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_dev_label_clicked()
+{
+    QMessageBox::about(this,"Labo Mécatronique",
+                       "<h4>Labo Mécatronique 342</h4>\n\n"
+                       "Teslamêtre Bluetooth<br>"
+                       "Champs Maximal : 2,5 T<br>"
+                       "Copyright 2023 Enise.<br>"
+                       "Support: Galtier Granjon Thévenon - Centrale Lyon - ENISE<br>"
+                       "<a href=\"http://www.enise.fr\">http://www.enise.fr</a>" );
+
+}
+
+//void MainWindow::on_tabWidget_currentChanged(int index)
+//{
+//   // ble_device.write_pass_char(0);
+//   // ui->doubleSpinBox_rc_a->setValue(0);
+//   // ui->doubleSpinBox_rt_v->setValue(0);
+//    if(index==1)
+//    {
+//        // usb_send_command("U",ui->doubleSpinBox_rt_v->value()*1000);
+//        //Alimentation en courant continu asservissement en tension
+//       // ble_device.read_cons_char();
+//        //ble_device.write_cons_char(QByteArray(4,00)); // envoie de la consigne a 0;
+//        //ble_device.read_cons_char();
+//        ble_device.read_mode_char();
+//        ble_device.write_mode_char(QByteArray(1,0x05)); // mode auto normale, commande en U forme constante
+//        ble_device.read_mode_char();
+//    }
+//    else if (index==2)
+//    {
+//        //  usb_send_command("I",ui->doubleSpinBox_rc_a->value()*1000);
+//       // ble_device.read_cons_char();
+//        //ble_device.write_cons_char(QByteArray(4,00)); // envoie de la consigne a 0;
+//        //ble_device.read_cons_char();
+//        ble_device.read_mode_char();
+//        ble_device.write_mode_char(QByteArray(1,0x07)); // mode auto normale, commande en I forme constante
+//        ble_device.read_mode_char();
+//    }
+//    else if (index==3)
+//    {
+//        //ui->triphase_v->setChecked(false);
+//        //ble_device.read_cons_char();
+//       // ble_device.write_cons_char(QByteArray(4,00)); // envoie de la consigne a 0;
+//       // ble_device.read_cons_char();
+//        ble_device.read_mode_char();
+//        ble_device.write_mode_char(QByteArray(1,0x02)); // mode auto normale, commande en V forme constante
+//        ble_device.read_mode_char();
+//    }
+//    else if (index==4)
+//    {
+//       // ui->triphase_i->setChecked(false);
+//       // ble_device.read_cons_char();
+//      //  ble_device.write_cons_char(QByteArray(4,00)); // envoie de la consigne a 0;
+//      //  ble_device.read_cons_char();
+//        ble_device.read_mode_char();
+//        ble_device.write_mode_char(QByteArray(1,0x07)); // mode auto normale, commande en I forme constante
+//        ble_device.read_mode_char();
+//    }
+//}
+
+//void MainWindow::on_doubleSpinBox_rt_v_editingFinished()
+//{
+//    // pour non sinusoidal : -24V = 0 et 24V = 4800
+//    //
+//    uint16_t tmp_int;
+//    QByteArray test;
+//    test=QByteArray(4,0);
+
+//    //tmp_int=(uint16_t)((2400.0*ui->doubleSpinBox_rt_v->value()/24.0))+2400;
+
+//    test[1]=0; //tmp_int>>8;
+//    test[0]=0; //tmp_int;
+//    test[2]=tmp_int>>8;
+//    test[3]=tmp_int;
+//   // ble_device.write_cons_char(test); // envoie de la consigne a 0;
+//   // ble_device.read_cons_char();
+
+//}
+
+//void MainWindow::on_doubleSpinBox_rc_a_editingFinished()
+//{
+//    // pour non sinusoidal : -9A = 0 et  9A = 18000
+//    //
+//    uint16_t tmp_int;
+//    QByteArray test;
+//    test=QByteArray(4,0);
+//    //tmp_int=(uint16_t)((9000.0*ui->doubleSpinBox_rc_a->value()/9.0))+9000;
+
+//    test[1]=0; //tmp_int>>8;
+//    test[0]=0; //tmp_int;
+//    test[2]=tmp_int>>8;
+//    test[3]=tmp_int;
+// //   ble_device.write_cons_char(test); // envoie de la consigne a 0;
+//   // ble_device.read_cons_char();
+//}
+
+void MainWindow::on_PB_Scan_clicked()
+{
+    set_led(RED);
+    timer->stop();
+   // ble_device.scan_complet=false;
+    timer->disconnect(timer, SIGNAL(timeout()),this, SLOT(connect_timer()));
+    timer->connect(timer, SIGNAL(timeout()),this, SLOT(scan_timer()));
+    ui->PB_Connect->setEnabled(false);
+//    ui->radioButton->setAutoExclusive(false);
+//    ui->radioButton->setChecked(false);
+//    ui->radioButton->setAutoExclusive(true);
+//    ui->radioButton_2->setAutoExclusive(false);
+//    ui->radioButton_2->setChecked(false);
+//    ui->radioButton_2->setAutoExclusive(true);
+//    ui->radioButton_3->setAutoExclusive(false);
+//    ui->radioButton_3->setChecked(false);
+//    ui->radioButton_3->setAutoExclusive(true);
+//    ui->radioButton->setEnabled(false);
+//    ui->radioButton_2->setEnabled(false);
+//    ui->radioButton_3->setEnabled(false);
+    ble_device.deviceSearch();
+    timer->start(500);
+}
+void MainWindow::scan_timer()
+{
+    unsigned char i;
+    if(ble_device.scan_complet==true)
+    {
+        if(ble_device.m_devices.count()>0)
+        {
+            for(i=0;i<ble_device.m_devices.count();i++)
+            {
+                if(ble_device.m_devices[i]->getAddress()==App1_MAC)
+                {
+                    ui->App1->setEnabled(true);
+                }
+                else if(ble_device.m_devices[i]->getAddress()==App2_MAC)
+                {
+                    ui->App2->setEnabled(true);
+                }
+                else if(ble_device.m_devices[i]->getAddress()==App3_MAC)
+                {
+                    ui->App3->setEnabled(true);
+                }
+            }
+        }
+        ble_device.scan_complet=false;
+    }
+    else
+    {
+        qDebug() << "Scan finished";
+        timer->stop();
+        timer->disconnect(timer, SIGNAL(timeout()),this, SLOT(scan_timer()));
+        ui->PB_Connect->setEnabled(true);
+        ui->PB_Connect->setText("Connect Bluetooth");
+        ui->PB_Scan->setEnabled(false);
+        if(ble_device.m_devices.count()>0)
+        {
+            ui->PB_Connect->setEnabled(true);
+        }
+    }
+}
+
+void MainWindow::error_power_ble()
+{
+    set_led(BLEU);
+ //   alim_connected=false;
+    timer->stop();
+}
+
+
+void MainWindow::error_ble()
+{
+    set_led(BLEU);
+  //  alim_connected=false;
+    timer->stop();
+    qDebug() << "error BLE scan";
+}
+
+void MainWindow::readble_timer()
+{
+    ble_device.read_mesu_char();
+}
+
+void MainWindow::recup_val()
+{
+    //qDebug() << "recu_val " << ble_device.b_a_passkey;
+    double b_moy,b_eff,freq;
+    uint8_t t_etat;
+    QString etat_text="Etat: ";
+    unsigned long cpt_mes=0;
+    long moy;
+    unsigned long long test;
+    unsigned char tab[8];
+ //   ui->forme_i_cb->blockSignals(true);
+ //   ui->forme_v_cb->blockSignals(true);
+ //   ui->offset_i_sb->blockSignals(true);
+ //   ui->offset_v_sb->blockSignals(true);
+
+
+    if(ble_device.b_a_passkey=="CLES OK! LETS GO")
+    {
+        set_led(VERT);
+       // alim_connected=true;
+    }
+    if(ui->DC->isChecked())
+    {
+        b_moy = 2048.0*((double)(((((unsigned char)ble_device.b_a_mesu[3]<<24)+
+                                    ((unsigned char)ble_device.b_a_mesu[2]<<16)+
+                                    ((unsigned char)ble_device.b_a_mesu[1]<<8)+
+                                    (unsigned char)ble_device.b_a_mesu[0]))))/(65535.0*1500.0);
+        b_eff=0;
+        freq=0;
+        cpt_mes=0;
+    }
+    else
+    {
+        b_moy=0;
+        moy=(long)(((unsigned char)ble_device.b_a_mesu[3]<<24)+
+                ((unsigned char)ble_device.b_a_mesu[2]<<16)+
+                ((unsigned char)ble_device.b_a_mesu[1]<<8)+
+                ((unsigned char)ble_device.b_a_mesu[0]));
+
+        tab[0]=(unsigned char)ble_device.b_a_mesu[4];
+        tab[1]=(unsigned char)ble_device.b_a_mesu[5];
+        tab[2]=(unsigned char)ble_device.b_a_mesu[6];
+        tab[3]=(unsigned char)ble_device.b_a_mesu[7];
+        tab[4]=(unsigned char)ble_device.b_a_mesu[8];
+        tab[5]=(unsigned char)ble_device.b_a_mesu[9];
+        tab[6]=(unsigned char)ble_device.b_a_mesu[10];
+        tab[7]=(unsigned char)ble_device.b_a_mesu[11];
+
+        test=tab[7]*pow(2,(7*8))+tab[6]*pow(2,(6*8))+tab[5]*pow(2,(5*8))+tab[4]*pow(2,(4*8))+tab[3]*pow(2,(3*8))+tab[2]*pow(2,(2*8))+tab[1]*pow(2,(1*8))+tab[7];
+
+       /* test=(((long long)ble_device.b_a_mesu[11]<<56)+
+                ((long long)ble_device.b_a_mesu[10]<<48)+
+                ((long long)ble_device.b_a_mesu[9]<<40)+
+                ((long long)ble_device.b_a_mesu[8]<<32)+
+                ((long long)ble_device.b_a_mesu[7]<<24)+
+                ((long long)ble_device.b_a_mesu[6]<<16)+
+                ((long long)ble_device.b_a_mesu[5]<<8)+
+                ((long long)ble_device.b_a_mesu[4]));*/
+        cpt_mes=(unsigned long)(((unsigned char)ble_device.b_a_mesu[15]<<24)+
+                ((unsigned char)ble_device.b_a_mesu[14]<<16)+
+                ((unsigned char)ble_device.b_a_mesu[13]<<8)+
+                ((unsigned char)ble_device.b_a_mesu[12]));
+        test=test/cpt_mes;
+        b_eff = 2048.0*sqrt(test)/(65535.0);
+        b_moy=2048.0*moy/(cpt_mes*65535);
+        qDebug() << "test: " << cpt_mes;
+        cpt_mes=(unsigned long)(((unsigned char)ble_device.b_a_mesu[19]<<24)+
+                ((unsigned char)ble_device.b_a_mesu[18]<<16)+
+                ((unsigned char)ble_device.b_a_mesu[17]<<8)+
+                ((unsigned char)ble_device.b_a_mesu[16]));
+        freq=1.0/(cpt_mes*1e-6);
+
+    }
+    // b_eff = 48.0*((double)(((unsigned char)ble_device.b_a_mesu[1]<<8)+(unsigned char)ble_device.b_a_mesu[0]))/32767.0-24.0;
+    //freq=;
+    //qDebug() << "test: " << cpt_mes;
+    ui->lcd_moy->display(b_moy);
+    ui->lcd_eff->display(b_eff);
+    ui->lcd_f->display(freq);
+  //  ui->lcd_rc_a->display(test);
+//    ui->lcd_rc_v->display(test2);
+    if(ble_device.b_a_mode[0]&0x01)
+    {
+        etat_text+= "Auto";
+    }
+    else {
+        etat_text+="Manu";
+    }
+    if(ble_device.b_a_mode[0]&0x02)
+    {
+        etat_text+= "-Courant";
+    }
+    else {
+        etat_text+="-Tension";
+    }
+
+    t_etat=(ble_device.b_a_mode[0]>>4)&0x0F;
+    switch (t_etat) {
+    case 0:
+        etat_text+="-Continu";
+        break;
+    case 1:
+        etat_text+="-Sinus";
+        break;
+    case 2:
+        etat_text+="-Triangle";
+        break;
+    case 3:
+        etat_text+="-Scie";
+        break;
+    case 4:
+        etat_text+="-Carré";
+        break;
+    default:
+        break;
+    }
+    if(ble_device.b_a_mode[0]&0x08)
+    {
+        etat_text+= "-Tri";
+//        ui->forme_i_cb->setCurrentIndex(1);
+//        ui->forme_i_cb->setEnabled(false);
+//        ui->offset_i_sb->setValue(0);
+//        ui->offset_i_sb->setEnabled(false);
+//        ui->forme_v_cb->setCurrentIndex(1);
+//        ui->forme_v_cb->setEnabled(false);
+//        ui->offset_v_sb->setValue(0);
+//        ui->offset_v_sb->setEnabled(false);
+    }
+    else {
+      /*  ui->offset_v_sb->setEnabled(true);
+        ui->offset_i_sb->setEnabled(true);
+        ui->forme_v_cb->setEnabled(true);
+        ui->forme_i_cb->setEnabled(true)*/;
+    }
+    status_text->setText(etat_text);
+//    ui->forme_i_cb->blockSignals(false);
+//    ui->forme_v_cb->blockSignals(false);
+//    ui->offset_i_sb->blockSignals(false);
+//    ui->offset_v_sb->blockSignals(false);
+}
+
+void MainWindow::on_PB_Connect_clicked()
+{
+    set_led(RED);
+    timer->connect(timer, SIGNAL(timeout()),this, SLOT(connect_timer()));
+    timer->start(2000);
+    connect_radiobutton();
+
+    //  ble_device.write_command(0);
+    //ble_device.connectToService
+}
+void MainWindow::connect_timer()
+{
+
+    if(ble_device.dev_connected==true)
+    {
+        ui->PB_Scan->setEnabled(false);
+        ui->PB_Connect->setText("Disconnect Bluetooth");
+//        ui->tabWidget->setTabEnabled(0,true);
+//        ui->tabWidget->setTabEnabled(1,true);
+//        ui->tabWidget->setTabEnabled(2,true);
+//        ui->tabWidget->setTabEnabled(3,true);
+//        ui->tabWidget->setTabEnabled(4,true);
+    }
+    else
+    {
+        // ui->label_led_connect->setPixmap(QPixmap(":/red_led.png"));
+        set_led(RED);
+        ui->PB_Connect->setText("Connect Bluetooth");
+        ui->PB_Connect->setEnabled(false);
+        ui->PB_Scan->setEnabled(true);
+//        ui->tabWidget->setTabEnabled(0,true);
+//        ui->tabWidget->setTabEnabled(1,false);
+//        ui->tabWidget->setTabEnabled(2,false);
+//        ui->tabWidget->setTabEnabled(3,false);
+//        ui->tabWidget->setTabEnabled(4,false);
+    }
+    timer->stop();
+}
+
+void MainWindow::connect_radiobutton()
+{
+    if(ble_device.dev_connected==false)
+    {
+        if(ui->App1->isChecked())
+        {
+            ble_device.connectToService(App1_MAC);
+            timer_read->start(300);
+        }
+        if(ui->App2->isChecked())
+        {
+            ble_device.connectToService(App2_MAC);
+        }
+        if(ui->App3->isChecked())
+        {
+            ble_device.connectToService(App3_MAC);
+        }
+    }
+    else
+    {
+        ble_device.disconnectService();
+    }
+}
+
+QByteArray MainWindow::int_toqba(uint32_t value,uint size)
+{
+    QByteArray result(size,0);
+    qToLittleEndian(value,result.data());
+    return result;
+}
+
+//// contient le mode de fct
+//// bit0=1 => auto sinon manu
+//// bit1= 1 => regul I sinon V
+//// bit2 = 0 arret, 1 marche
+//// bit3 = 0 comande normale + diphase,1 triphase
+//// bits 4-5-6-7 => forme 0= constant, 1= sinus, 2=triangle, 3= dents de scie, 4 = carree
+//void MainWindow::on_triphase_v_stateChanged(int arg1)
+//{
+//    uint8_t t_mode;
+//    QString etat_text;
+////   ui->forme_v_cb->blockSignals(true);
+////   ui->forme_i_cb->blockSignals(true);
+////    if (ui->tabWidget->currentIndex()==3) // GBF tension
+////    {
+////        ui->forme_v_cb->setCurrentIndex(1);
+////        t_mode=0x05+(ui->forme_v_cb->currentIndex()<<4)+(ui->triphase_v->isChecked()<<3);
+////    }
+////    else {
+////        ui->forme_i_cb->setCurrentIndex(1);
+////        t_mode=0x07+(ui->forme_i_cb->currentIndex()<<4)+(ui->triphase_i->isChecked()<<3);
+////    }
+////    ui->forme_v_cb->blockSignals(false);
+////    ui->forme_i_cb->blockSignals(false);
+//    ble_device.write_mode_char(QByteArray(1,t_mode)); // mode auto normale, commande en V forme constante
+//    ble_device.read_mode_char();
+//}
+
+//void MainWindow::on_triphase_i_stateChanged(int arg1)
+//{
+//    uint8_t t_mode;
+//    QString etat_text;
+////    ui->forme_i_cb->blockSignals(true);
+////    ui->forme_v_cb->blockSignals(true);
+////    if (ui->tabWidget->currentIndex()==3) // GBF tension
+////    {
+////        ui->forme_v_cb->setCurrentIndex(1);
+////        t_mode=0x05+(ui->forme_v_cb->currentIndex()<<4)+(ui->triphase_v->isChecked()<<3);
+////    }
+////    else {
+////        ui->forme_i_cb->setCurrentIndex(1);
+////        t_mode=0x07+(ui->forme_i_cb->currentIndex()<<4)+(ui->triphase_i->isChecked()<<3);
+////    }
+////    ui->forme_i_cb->blockSignals(false);
+////    ui->forme_v_cb->blockSignals(false);
+//    ble_device.write_mode_char(QByteArray(1,t_mode)); // mode auto normale, commande en V forme constante
+//    ble_device.read_mode_char();
+//}
+
+//void MainWindow::on_forme_v_cb_currentIndexChanged(int index)
+//{
+//    uint8_t t_mode;
+//    //t_mode=0x05+(ui->forme_v_cb->currentIndex()<<4)+(ui->triphase_v->isChecked()<<3);
+//    ble_device.write_mode_char(QByteArray(1,t_mode)); // mode auto normale, commande en V forme constante
+//    ble_device.read_mode_char();
+//}
+
+//void MainWindow::on_forme_i_cb_currentIndexChanged(int index)
+//{
+//    uint8_t t_mode;
+//    //t_mode=0x05+(ui->forme_i_cb->currentIndex()<<4)+(ui->triphase_i->isChecked()<<3);
+//    ble_device.write_mode_char(QByteArray(1,t_mode)); // mode auto normale, commande en V forme constante
+//    ble_device.read_mode_char();
+//}
+
+//void MainWindow::on_frequence_i_sb_editingFinished()
+//{
+//    modifie_freq();
+//}
+
+//void MainWindow::on_frequence_v_sb_editingFinished()
+//{
+//    modifie_freq();
+//}
+//void MainWindow::modifie_freq()
+//{
+//    uint16_t tmp_int;
+//    QByteArray test;
+//    test=QByteArray(2,0);
+////    if(ui->tabWidget->currentIndex()==3)
+////    {
+////        tmp_int=(uint16_t)((100.0*ui->frequence_v_sb->value()));
+////    }
+////        else if(ui->tabWidget->currentIndex()==4) {
+////        tmp_int=(uint16_t)((100.0*ui->frequence_i_sb->value()));
+////    }
+//    test[0]=tmp_int>>8;
+//    test[1]=tmp_int;
+
+//   // ble_device.write_freq_char(test); // envoie de la consigne a 0;
+//   // ble_device.read_freq_char();
+//}
+
+//void MainWindow::on_ampli_v_sb_editingFinished()
+//{
+//    modifie_consigne();
+//}
+
+//void MainWindow::on_ampli_i_sb_editingFinished()
+//{
+//    modifie_consigne();
+//}
+
+//void MainWindow::on_offset_i_sb_editingFinished()
+//{
+//    modifie_consigne();
+//}
+
+//void MainWindow::on_offset_v_sb_editingFinished()
+//{
+//    modifie_consigne();
+//}
+
+//void MainWindow::modifie_consigne()
+//{
+//    // consigne[2] : 0 amplitude 1 offset
+//    uint16_t tmp_int;
+//    QByteArray test;
+//    test=QByteArray(4,0);
+////    if(ui->tabWidget->currentIndex()==3)
+////    {
+
+////        tmp_int=(uint16_t)((2400.0*ui->ampli_v_sb->value()/24.0));
+
+////        test[0]=tmp_int>>8;
+////        test[1]=tmp_int;
+////        tmp_int=(uint16_t)((2400.0*ui->offset_v_sb->value()/24.0))+2400;
+////        test[2]=tmp_int>>8;
+////        test[3]=tmp_int;
+////    }
+////    else if (ui->tabWidget->currentIndex()==4) {
+////        tmp_int=(uint16_t)((9000.0*ui->ampli_i_sb->value()/9.0))+9000;
+
+////        test[0]=tmp_int>>8;
+////        test[1]=tmp_int;
+////        tmp_int=(uint16_t)((9000.0*ui->offset_i_sb->value()/9.0))+9000;
+////        test[2]=tmp_int>>8;
+////        test[3]=tmp_int;
+////    }
+//    //ble_device.write_cons_char(test); // envoie de la consigne a 0;
+//    //ble_device.read_cons_char();
+//}
+
+//void MainWindow::on_PB_voltplus_clicked()
+//{
+//  //  ui->doubleSpinBox_rt_v->setValue(ui->doubleSpinBox_rt_v->value()+0.5);
+//    on_doubleSpinBox_rt_v_editingFinished();
+//}
+
+//void MainWindow::on_PB_voltmoins_clicked()
+//{
+//  //  ui->doubleSpinBox_rt_v->setValue(ui->doubleSpinBox_rt_v->value()-0.5);
+//    on_doubleSpinBox_rt_v_editingFinished();
+//}
+
+//void MainWindow::on_PB_courantplus_clicked()
+//{
+//  //  ui->doubleSpinBox_rc_a->setValue(ui->doubleSpinBox_rc_a->value()+0.1);
+//    on_doubleSpinBox_rc_a_editingFinished();
+//}
+
+//void MainWindow::on_PB_courantmoins_clicked()
+//{
+//  //   ui->doubleSpinBox_rc_a->setValue(ui->doubleSpinBox_rc_a->value()-0.1);
+//     on_doubleSpinBox_rc_a_editingFinished();
+//}
+
+void MainWindow::on_AC_toggled(bool checked)
+{
+    QByteArray test;
+    if(checked==true)
+    {
+        test[0]=0xAC;
+        ble_device.write_mode_char(test);
+    }
+    else
+    {
+        test[0]=0xDC;
+        ble_device.write_mode_char(test);
+    }
+}
+
+
+void MainWindow::on_pushButton_clicked()
+{
+    QByteArray test;
+    test[0]=0xF0;
+    ble_device.write_mode_char(test);
+    QThread::msleep(100);
+    test[0]=0xDC;
+    ble_device.write_mode_char(test);
+    ui->DC->setChecked(true);
+}
+

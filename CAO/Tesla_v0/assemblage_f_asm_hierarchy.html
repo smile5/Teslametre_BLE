@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>A2P assembly hierarchy visualization</title>
+</head>
+<body>
+<div class="mermaid">
+graph TD
+Couvercle_f_001 -- axial --> M3x12-Screw
+Couvercle_f_001 -- plane --> M3x12-Screw
+Couvercle_f_001 -- plane --> M3x12-Screw033
+Couvercle_f_001 -- axial --> M3x12-Screw033
+Couvercle_f_001 -- axial --> M3x12-Screw034
+Couvercle_f_001 -- plane --> M3x12-Screw034
+Couvercle_f_001 -- plane --> M3x12-Screw035
+Couvercle_f_001 -- axial --> M3x12-Screw035
+Boitier_f_001(Boitier_f_001<br>*FIXED*) -- plane --> Couvercle_f_001
+Boitier_f_001(Boitier_f_001<br>*FIXED*) -- plane --> Couvercle_f_001
+Boitier_f_001(Boitier_f_001<br>*FIXED*) -- plane --> Couvercle_f_001
+Boitier_f_001(Boitier_f_001<br>*FIXED*) -- plane --> Tesla_f1_001
+Boitier_f_001(Boitier_f_001<br>*FIXED*) -- planesParallel --> Tesla_f1_001
+Boitier_f_001(Boitier_f_001<br>*FIXED*) -- plane --> M6x30-Screw
+Boitier_f_001(Boitier_f_001<br>*FIXED*) -- axial --> M6x30-Screw
+Boitier_f_001(Boitier_f_001<br>*FIXED*) -- planesParallel --> M6x30-Screw
+Boitier_f_001(Boitier_f_001<br>*FIXED*) -- axial --> Tesla_f1_001
+Tesla_f1_001
+M6x30-Screw
+M3x12-Screw
+M3x12-Screw033
+M3x12-Screw034
+M3x12-Screw035
+</div>
+    <script src="https://unpkg.com/mermaid@7.1.2/dist/mermaid.js"></script>
+    <script>
+        mermaid.initialize({startOnLoad: true});
+    </script>
+</body></html>

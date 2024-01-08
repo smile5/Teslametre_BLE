@@ -1,0 +1,12 @@
+<RCC>
+    <qresource prefix="/">
+        <file>green_led.png</file>
+        <file>red_led.png</file>
+        <file>qtproject_qtcreator_qt_22392.png</file>
+        <file>qtconfig_qt4_qt_22393.png</file>
+        <file>cypress.png</file>
+        <file>Logo_ecl.png</file>
+        <file>archlinux-icon-crystal-128.png</file>
+        <file>Open_Source_Initiative_keyhole.png</file>
+    </qresource>
+</RCC>
